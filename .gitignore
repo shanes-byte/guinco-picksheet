@@ -1,0 +1,19 @@
+# OS/Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Node / PHP vendor
+node_modules/
+vendor/
+
+# Uploads, builds, logs
+wp-content/uploads/
+*.zip
+*.csv
+*.log
+dist/
+
+# Cursor metadata
+.cursorignore

@@ -1,0 +1,10 @@
+.psd-table th, .psd-table td {
+    padding: 4px 8px;
+    text-align: left;
+}
+.psd-complete-message, .psd-last-saved {
+    padding: 8px;
+    background: #e6f4ff;
+    border-left: 4px solid #0073aa;
+    margin-bottom: 10px;
+}

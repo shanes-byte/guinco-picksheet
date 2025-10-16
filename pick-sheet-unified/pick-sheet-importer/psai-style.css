@@ -1,0 +1,19 @@
+.psai-table th, .psai-table td {
+    padding: 4px 8px;
+    text-align: left;
+    vertical-align: middle;
+}
+.psai-table tr.psai-flash {
+    animation: psai-flash 0.8s ease-in-out;
+}
+@keyframes psai-flash {
+    0% { background-color: #fff7d1; }
+    50% { background-color: #ffe8a3; }
+    100% { background-color: inherit; }
+}
+.psai-complete-message, .psai-last-saved {
+    padding: 8px;
+    background: #e6ffed;
+    border-left: 4px solid #46b450;
+    margin-bottom: 10px;
+}

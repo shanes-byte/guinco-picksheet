@@ -1,0 +1,10 @@
+{
+  "name": "Quick Pick Sheet",
+  "short_name": "QuickPick",
+  "start_url": "/?quick_pick=1",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0073aa",
+  "description": "Simplified pick sheet interface for picking one item at a time.",
+  "icons": []
+}
