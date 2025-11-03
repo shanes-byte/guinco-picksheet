@@ -5,6 +5,7 @@
     var driverMode   = psdData.driver_mode || 'simple';
     var driverLoaded = Array.isArray(psdData.driver_loaded) ? psdData.driver_loaded.slice() : [];
     var driverMissing= Array.isArray(psdData.driver_missing) ? psdData.driver_missing.slice() : [];
+    var driverDelivered = Array.isArray(psdData.driver_delivered) ? psdData.driver_delivered.slice() : [];
     var completed    = psdData.completed;
     var currentPart  = null;
     var currentStep  = driverMode === 'strict' ? 'part' : 'bin';
@@ -39,6 +40,16 @@
                 if (driverMissing.indexOf(part) === -1) driverMissing.push(part);
             } else {
                 driverMissing = driverMissing.filter(function (p) { return p !== part; });
+            }
+        });
+        $('.psd-table').on('change', '.psd-deliver', function () {
+            var part = $(this).val();
+            if ($(this).is(':checked')) {
+                if (driverDelivered.indexOf(part) === -1) driverDelivered.push(part);
+                updateDeliveredMeta(part, true);
+            } else {
+                driverDelivered = driverDelivered.filter(function (p) { return p !== part; });
+                updateDeliveredMeta(part, false);
             }
         });
         // Save button
@@ -114,14 +125,20 @@
         var $row = $('.psd-table tbody tr[data-part="' + part + '"]');
         if ($row.length) {
             $row.find('.psd-deliver').prop('checked', true);
-            // Save delivered state on server via meta; we mark using meta key driver_delivered_{part}
-            $.post(psdData.ajax_url, {
-                action: 'psd_mark_delivered',
-                nonce: nonce,
-                post_id: postId,
-                part: part
-            });
+            if (driverDelivered.indexOf(part) === -1) {
+                driverDelivered.push(part);
+            }
+            updateDeliveredMeta(part, true);
         }
+    }
+    function updateDeliveredMeta(part, isDelivered) {
+        $.post(psdData.ajax_url, {
+            action: 'psd_mark_delivered',
+            nonce: nonce,
+            post_id: postId,
+            part: part,
+            delivered: isDelivered ? 'yes' : 'no'
+        });
     }
     function saveProgress(callback) {
         $.post(psdData.ajax_url, {
@@ -129,7 +146,8 @@
             nonce: nonce,
             post_id: postId,
             driver_loaded: driverLoaded,
-            driver_missing: driverMissing
+            driver_missing: driverMissing,
+            driver_delivered: driverDelivered
         }, function (res) {
             if (res.success) {
                 if (typeof callback === 'function') {

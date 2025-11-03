@@ -182,10 +182,18 @@ function psai_pick_sheet_shortcode( $atts ) {
         }
         $part_number = $data['PartNumber'] ?? '';
         $bin_loc     = $data['BinLoc'] ?? '';
+        $shelf_loc   = '';
+        if ( isset( $data['Shelf'] ) ) {
+            $shelf_loc = $data['Shelf'];
+        } elseif ( isset( $data['ShelfNumber'] ) ) {
+            $shelf_loc = $data['ShelfNumber'];
+        } elseif ( isset( $data['ShelfLoc'] ) ) {
+            $shelf_loc = $data['ShelfLoc'];
+        }
         $picked      = in_array( $row_index, $picked_items, true );
         $detail      = isset( $picked_details[ $row_index ] ) ? $picked_details[ $row_index ] : array();
         // Build the row HTML
-        $row_html = '<tr data-index="' . esc_attr( $row_index ) . '" data-part="' . esc_attr( $part_number ) . '" data-bin="' . esc_attr( $bin_loc ) . '">';
+        $row_html = '<tr data-index="' . esc_attr( $row_index ) . '" data-part="' . esc_attr( $part_number ) . '" data-bin="' . esc_attr( $bin_loc ) . '" data-shelf="' . esc_attr( $shelf_loc ) . '">';
         foreach ( $header as $col ) {
             $value = isset( $data[ $col ] ) ? $data[ $col ] : '';
             $row_html .= '<td>' . esc_html( $value ) . '</td>';
