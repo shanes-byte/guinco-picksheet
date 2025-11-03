@@ -11,6 +11,11 @@
     var currentIndex  = null;
     var currentStep   = 'part'; // part -> bin -> shelf
 
+    pickedItems = pickedItems.map(function (item) {
+        var idx = parseInt(item, 10);
+        return isNaN(idx) ? item : idx;
+    });
+
     // Update input placeholder based on current step
     function updatePlaceholder() {
         var $input = $('#psai-search');
@@ -41,15 +46,33 @@
 
         // Checkbox toggle changes pickedItems array.
         $('.psai-table').on('change', '.psai-pick-checkbox', function () {
-            var part = $(this).val();
+            var $row   = $(this).closest('tr');
+            var index  = parseInt($(this).val(), 10);
+            if (isNaN(index)) {
+                return;
+            }
             if ($(this).is(':checked')) {
-                if (pickedItems.indexOf(part) === -1) {
-                    pickedItems.push(part);
+                if (pickedItems.indexOf(index) === -1) {
+                    pickedItems.push(index);
                 }
+                if (!pickedDetails[index]) {
+                    pickedDetails[index] = {};
+                }
+                if (!pickedDetails[index].bin) {
+                    pickedDetails[index].bin = $row.data('bin') || '';
+                }
+                if (!pickedDetails[index].shelf) {
+                    pickedDetails[index].shelf = $row.data('shelf') || '';
+                }
+                pickedDetails[index].time = pickedDetails[index].time || Math.floor(Date.now() / 1000);
+                pickedDetails[index].manual = true;
             } else {
-                var idx = pickedItems.indexOf(part);
+                var idx = pickedItems.indexOf(index);
                 if (idx !== -1) {
                     pickedItems.splice(idx, 1);
+                }
+                if (pickedDetails.hasOwnProperty(index)) {
+                    delete pickedDetails[index];
                 }
             }
         });

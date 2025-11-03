@@ -122,6 +122,24 @@ function psd_driver_shortcode( $atts ) {
     }
     $completed_time = get_post_meta( $post_id, 'driver_verified_time', true );
     $last_saved     = get_post_meta( $post_id, 'last_saved_at_driver', true );
+    $delivered_parts = maybe_unserialize( get_post_meta( $post_id, 'driver_delivered', true ) );
+    if ( ! is_array( $delivered_parts ) ) {
+        $delivered_parts = array();
+    }
+    if ( empty( $delivered_parts ) ) {
+        foreach ( $items as $row ) {
+            $row_data = array();
+            foreach ( $header as $index => $col ) {
+                $row_data[ $col ] = isset( $row[ $index ] ) ? $row[ $index ] : '';
+            }
+            $part_number = $row_data['PartNumber'] ?? '';
+            if ( $part_number && get_post_meta( $post_id, 'driver_delivered_' . $part_number, true ) ) {
+                $delivered_parts[] = $part_number;
+            }
+        }
+        $delivered_parts = array_values( array_unique( $delivered_parts ) );
+    }
+    $delivered_parts = array_values( array_unique( array_map( 'sanitize_text_field', $delivered_parts ) ) );
     ob_start();
     // Completion notice
     if ( $completed_time ) {
@@ -145,7 +163,7 @@ function psd_driver_shortcode( $atts ) {
         $part = $data['PartNumber'] ?? '';
         $loaded    = in_array( $part, $driver_loaded, true );
         $missing   = in_array( $part, $driver_missing, true );
-        $delivered = get_post_meta( $post_id, 'driver_delivered_' . $part, true );
+        $delivered = in_array( $part, $delivered_parts, true );
         echo '<tr data-part="' . esc_attr( $part ) . '" data-bin="' . esc_attr( $data['BinLoc'] ?? '' ) . '">';
         foreach ( $header as $col ) {
             $val = isset( $data[ $col ] ) ? $data[ $col ] : '';
@@ -198,9 +216,10 @@ function psd_driver_shortcode( $atts ) {
         'post_id'        => $post_id,
         'driver_loaded'  => $driver_loaded,
         'driver_missing' => $driver_missing,
-        'driver_mode'    => $driver_mode,
-        'completed'      => (bool) $completed_time,
-        'nonce'          => wp_create_nonce( 'psd_nonce' ),
+        'driver_mode'      => $driver_mode,
+        'completed'        => (bool) $completed_time,
+        'nonce'            => wp_create_nonce( 'psd_nonce' ),
+        'driver_delivered' => $delivered_parts,
     );
     wp_localize_script( 'psd-script', 'psdData', $data );
     return $output;
@@ -223,12 +242,31 @@ function psd_enqueue_scripts() {
  */
 function psd_ajax_save_progress() {
     check_ajax_referer( 'psd_nonce', 'nonce' );
-    $post_id        = intval( $_POST['post_id'] );
-    $loaded         = isset( $_POST['driver_loaded'] ) ? (array) $_POST['driver_loaded'] : array();
-    $missing        = isset( $_POST['driver_missing'] ) ? (array) $_POST['driver_missing'] : array();
-    // Save arrays
+    $post_id  = intval( $_POST['post_id'] );
+    $loaded   = isset( $_POST['driver_loaded'] ) ? (array) $_POST['driver_loaded'] : array();
+    $missing  = isset( $_POST['driver_missing'] ) ? (array) $_POST['driver_missing'] : array();
+    $delivered = isset( $_POST['driver_delivered'] ) ? (array) $_POST['driver_delivered'] : array();
+
+    $loaded    = array_values( array_unique( array_map( 'sanitize_text_field', wp_unslash( $loaded ) ) ) );
+    $missing   = array_values( array_unique( array_map( 'sanitize_text_field', wp_unslash( $missing ) ) ) );
+    $delivered = array_values( array_unique( array_map( 'sanitize_text_field', wp_unslash( $delivered ) ) ) );
+
     update_post_meta( $post_id, 'driver_loaded', maybe_serialize( $loaded ) );
     update_post_meta( $post_id, 'driver_missing', maybe_serialize( $missing ) );
+
+    $previous_delivered = maybe_unserialize( get_post_meta( $post_id, 'driver_delivered', true ) );
+    if ( ! is_array( $previous_delivered ) ) {
+        $previous_delivered = array();
+    }
+    update_post_meta( $post_id, 'driver_delivered', maybe_serialize( $delivered ) );
+    $to_remove = array_diff( $previous_delivered, $delivered );
+    foreach ( $to_remove as $part ) {
+        delete_post_meta( $post_id, 'driver_delivered_' . $part );
+    }
+    foreach ( $delivered as $part ) {
+        update_post_meta( $post_id, 'driver_delivered_' . $part, 'yes' );
+    }
+
     update_post_meta( $post_id, 'last_saved_at_driver', time() );
     wp_send_json_success( array( 'message' => 'Saved' ) );
 }
@@ -243,6 +281,31 @@ function psd_ajax_complete_sheet() {
     $loaded   = maybe_unserialize( get_post_meta( $post_id, 'driver_loaded', true ) );
     $items    = maybe_unserialize( get_post_meta( $post_id, 'items_table', true ) );
     $header   = maybe_unserialize( get_post_meta( $post_id, 'psai_header', true ) );
+    $missing  = maybe_unserialize( get_post_meta( $post_id, 'driver_missing', true ) );
+    $delivered = maybe_unserialize( get_post_meta( $post_id, 'driver_delivered', true ) );
+
+    $loaded    = is_array( $loaded ) ? $loaded : array();
+    $missing   = is_array( $missing ) ? $missing : array();
+    $delivered = is_array( $delivered ) ? $delivered : array();
+
+    $loaded    = array_values( array_unique( array_map( 'sanitize_text_field', $loaded ) ) );
+    $missing   = array_values( array_unique( array_map( 'sanitize_text_field', $missing ) ) );
+    $delivered = array_values( array_unique( array_map( 'sanitize_text_field', $delivered ) ) );
+
+    if ( empty( $delivered ) && is_array( $items ) ) {
+        foreach ( $items as $row ) {
+            $row_data = array();
+            foreach ( $header as $index => $col ) {
+                $row_data[ $col ] = isset( $row[ $index ] ) ? $row[ $index ] : '';
+            }
+            $part_number = $row_data['PartNumber'] ?? '';
+            if ( $part_number && get_post_meta( $post_id, 'driver_delivered_' . $part_number, true ) ) {
+                $delivered[] = $part_number;
+            }
+        }
+        $delivered = array_values( array_unique( $delivered ) );
+    }
+
     if ( ! is_array( $items ) ) {
         wp_send_json_error( 'No items' );
     }
@@ -257,6 +320,7 @@ function psd_ajax_complete_sheet() {
     $fh         = fopen( $filepath, 'w' );
     $extended_header = $header;
     $extended_header[] = 'Loaded';
+    $extended_header[] = 'Delivered';
     $extended_header[] = 'Missing';
     fputcsv( $fh, $extended_header );
     foreach ( $items as $row ) {
@@ -265,10 +329,12 @@ function psd_ajax_complete_sheet() {
             $data[ $col ] = isset( $row[ $index ] ) ? $row[ $index ] : '';
         }
         $part = $data['PartNumber'] ?? '';
-        $is_loaded  = in_array( $part, $loaded, true ) ? 'yes' : 'no';
-        $is_missing = in_array( $part, maybe_unserialize( get_post_meta( $post_id, 'driver_missing', true ) ), true ) ? 'yes' : 'no';
-        $extended_row = $row;
+        $is_loaded     = in_array( $part, $loaded, true ) ? 'yes' : 'no';
+        $is_delivered  = in_array( $part, $delivered, true ) ? 'yes' : 'no';
+        $is_missing    = in_array( $part, $missing, true ) ? 'yes' : 'no';
+        $extended_row  = $row;
         $extended_row[] = $is_loaded;
+        $extended_row[] = $is_delivered;
         $extended_row[] = $is_missing;
         fputcsv( $fh, $extended_row );
     }
@@ -281,17 +347,30 @@ function psd_ajax_complete_sheet() {
 add_action( 'wp_ajax_psd_complete_sheet', 'psd_ajax_complete_sheet' );
 
 /**
- * AJAX mark delivered for a part. Stores delivered state in meta driver_delivered_{part}.
+ * AJAX update handler for delivered state.
  */
 function psd_ajax_mark_delivered() {
     check_ajax_referer( 'psd_nonce', 'nonce' );
     $post_id = intval( $_POST['post_id'] );
-    $part    = sanitize_text_field( $_POST['part'] );
-    if ( $post_id && $part ) {
-        update_post_meta( $post_id, 'driver_delivered_' . $part, 'yes' );
-        wp_send_json_success();
-    } else {
+    $part    = isset( $_POST['part'] ) ? sanitize_text_field( wp_unslash( $_POST['part'] ) ) : '';
+    $status  = isset( $_POST['delivered'] ) ? sanitize_text_field( wp_unslash( $_POST['delivered'] ) ) : 'yes';
+    if ( ! $post_id || ! $part ) {
         wp_send_json_error( 'Invalid' );
     }
+    $status            = strtolower( $status ) === 'no' ? 'no' : 'yes';
+    $delivered_parts   = maybe_unserialize( get_post_meta( $post_id, 'driver_delivered', true ) );
+    $delivered_parts   = is_array( $delivered_parts ) ? $delivered_parts : array();
+    if ( 'yes' === $status ) {
+        update_post_meta( $post_id, 'driver_delivered_' . $part, 'yes' );
+        if ( ! in_array( $part, $delivered_parts, true ) ) {
+            $delivered_parts[] = $part;
+        }
+    } else {
+        delete_post_meta( $post_id, 'driver_delivered_' . $part );
+        $delivered_parts = array_diff( $delivered_parts, array( $part ) );
+    }
+    $delivered_parts = array_values( array_unique( array_map( 'sanitize_text_field', $delivered_parts ) ) );
+    update_post_meta( $post_id, 'driver_delivered', maybe_serialize( $delivered_parts ) );
+    wp_send_json_success();
 }
 add_action( 'wp_ajax_psd_mark_delivered', 'psd_ajax_mark_delivered' );
