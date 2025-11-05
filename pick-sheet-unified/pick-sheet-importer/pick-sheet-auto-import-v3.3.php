@@ -132,9 +132,9 @@ function psai_pick_sheet_shortcode( $atts ) {
     }
     global $post;
     $post_id = $post->ID;
-    // Quick view: if quick_pick query param is present and truthy, render quick pick UI
-    if ( isset( $_GET['quick_pick'] ) && intval( $_GET['quick_pick'] ) === 1 ) {
-        return psai_next_item_shortcode( array( 'id' => $post_id ) );
+    // SwiftPick view is now the default. Show full list view only if full_view=1 query param is present
+    if ( ! isset( $_GET['full_view'] ) || intval( $_GET['full_view'] ) !== 1 ) {
+        return psai_swift_pick_shortcode( array( 'id' => $post_id ) );
     }
     $items   = maybe_unserialize( get_post_meta( $post_id, 'items_table', true ) );
     $header  = maybe_unserialize( get_post_meta( $post_id, 'psai_header', true ) );
@@ -158,9 +158,9 @@ function psai_pick_sheet_shortcode( $atts ) {
     if ( $last_saved ) {
         echo '<div class="psai-last-saved">Last saved: ' . esc_html( date_i18n( get_option( 'date_format' ) . ' H:i', intval( $last_saved ) ) ) . '</div>';
     }
-    // Toggle link between full and quick view.
-    $quick_url = add_query_arg( 'quick_pick', '1', get_permalink( $post_id ) );
-    echo '<p><a href="' . esc_url( $quick_url ) . '" class="psai-toggle-quick">Switch to Quick Pick</a></p>';
+    // Toggle link to SwiftPick view (default view)
+    $swift_url = remove_query_arg( 'full_view', get_permalink( $post_id ) );
+    echo '<p><a href="' . esc_url( $swift_url ) . '" class="psai-toggle-swift">Switch to SwiftPick</a></p>';
     // Save progress button (only if not completed).
     if ( ! $completed_time ) {
         echo '<button id="psai-save-progress" class="button button-secondary" style="margin-bottom:10px;">Save Progress</button>';
@@ -237,6 +237,7 @@ function psai_pick_sheet_shortcode( $atts ) {
         'picked_items'   => $picked_items,
         'picked_details' => $picked_details,
         'completed'      => (bool) $completed_time,
+        'nonce'          => wp_create_nonce( 'psai_nonce' ),
     );
     wp_localize_script( 'psai-script', 'psaiData', $data );
 
@@ -246,7 +247,7 @@ function psai_pick_sheet_shortcode( $atts ) {
 /**
  * Shortcode to display simplified picker UI showing only the next item to pick.
  *
- * Usage: [quick_pick_sheet order="asc|desc"]
+ * Usage: [swift_pick_sheet order="asc|desc"]
  * This UI displays one row at a time (technician, part number, description, BinLoc) and
  * guides the picker through the scanning steps (part → bin → shelf).
  * It is designed for HTML5 "Add to Home Screen" usage with PWA features.
@@ -254,7 +255,7 @@ function psai_pick_sheet_shortcode( $atts ) {
  * @param array $atts Shortcode attributes.
  * @return string HTML content for the simplified picker UI.
  */
-function psai_next_item_shortcode( $atts ) {
+function psai_swift_pick_shortcode( $atts ) {
     // Accept a sheet ID attribute so the shortcode can be used outside of a single pick_sheets post.
     $atts = shortcode_atts(
         array(
@@ -262,7 +263,7 @@ function psai_next_item_shortcode( $atts ) {
             'id'    => 0,
         ),
         $atts,
-        'quick_pick_sheet'
+        'swift_pick_sheet'
     );
     $order = strtolower( $atts['order'] ) === 'desc' ? 'desc' : 'asc';
     // Determine which pick sheet post to use: id attribute if provided, otherwise current post ID
@@ -317,14 +318,14 @@ function psai_next_item_shortcode( $atts ) {
     $part       = $next_row && $part_idx !== false && isset( $next_row[ $part_idx ] ) ? $next_row[ $part_idx ] : '';
     $bin        = $next_row && $bin_idx !== false && isset( $next_row[ $bin_idx ] ) ? $next_row[ $bin_idx ] : '';
     ob_start();
-    echo '<div class="psai-next-container">';
+    echo '<div class="psai-swift-container">';
     // Add link back to full view for toggling
-    $full_url = remove_query_arg( 'quick_pick', get_permalink( $post_id ) );
+    $full_url = add_query_arg( 'full_view', '1', get_permalink( $post_id ) );
     echo '<p><a href="' . esc_url( $full_url ) . '" class="psai-toggle-full">Switch to Full View</a></p>';
-    echo '<div class="psai-next-item">';
+    echo '<div class="psai-swift-item">';
     if ( $next_row ) {
         echo '<h3>Next Item to Pick</h3>';
-        echo '<table class="widefat psai-next-table">';
+        echo '<table class="widefat psai-swift-table">';
         echo '<thead><tr><th>Technician</th><th>Part Number</th><th>Description</th><th>Bin Location</th></tr></thead>';
         echo '<tbody>';
         echo '<tr data-index="' . esc_attr( $next_index ) . '" data-part="' . esc_attr( $part ) . '">';
@@ -334,18 +335,18 @@ function psai_next_item_shortcode( $atts ) {
         echo '<td>' . esc_html( $bin ) . '</td>';
         echo '</tr>';
         echo '</tbody></table>';
-        echo '<input type="text" id="psai-next-search" placeholder="Scan or search part..." style="margin-top:10px;width:200px;" />';
-        echo '<button id="psai-next-save" class="button button-secondary" style="margin-top:10px;">Save Progress</button>';
-        echo '<button id="psai-next-complete" class="button button-primary" style="margin-top:10px;">Complete Pick Sheet</button>';
+        echo '<input type="text" id="psai-swift-search" placeholder="Scan or search part..." style="margin-top:10px;width:200px;" />';
+        echo '<button id="psai-swift-save" class="button button-secondary" style="margin-top:10px;">Save Progress</button>';
+        echo '<button id="psai-swift-complete" class="button button-primary" style="margin-top:10px;">Complete Pick Sheet</button>';
     } else {
         echo '<p>All items picked!</p>';
     }
     echo '</div>';
-    echo '<div id="psai-next-feedback" style="margin-top:10px;"></div>';
+    echo '<div id="psai-swift-feedback" style="margin-top:10px;"></div>';
     $output = ob_get_clean();
-    // Enqueue next UI script and styles
-    wp_enqueue_script( 'psai-next-script', plugins_url( 'pick-sheet-importer/psai-next.js', __FILE__ ), array( 'jquery' ), '1.0', true );
-    // Localize data for next UI
+    // Enqueue SwiftPick UI script and styles
+    wp_enqueue_script( 'psai-swift-script', plugins_url( 'pick-sheet-importer/psai-swift.js', __FILE__ ), array( 'jquery' ), '1.0', true );
+    // Localize data for SwiftPick UI
     $data = array(
         'ajax_url'        => admin_url( 'admin-ajax.php' ),
         'post_id'         => $post_id,
@@ -353,19 +354,19 @@ function psai_next_item_shortcode( $atts ) {
         'picked_items'    => $picked_items,
         'picked_details'  => $picked_details,
         'order'           => $order,
-        'nonce'           => wp_create_nonce( 'psai_next_nonce' ),
+        'nonce'           => wp_create_nonce( 'psai_nonce' ),
     );
-    wp_localize_script( 'psai-next-script', 'psaiNextData', $data );
-    // Output manifest link and meta for PWA (only on next UI)
-    add_action( 'wp_head', 'psai_next_manifest_link' );
+    wp_localize_script( 'psai-swift-script', 'psaiSwiftData', $data );
+    // Output manifest link and meta for PWA (only on SwiftPick UI)
+    add_action( 'wp_head', 'psai_swift_manifest_link' );
     return $output;
 }
-add_shortcode( 'quick_pick_sheet', 'psai_next_item_shortcode' );
+add_shortcode( 'swift_pick_sheet', 'psai_swift_pick_shortcode' );
 
 /**
- * Output manifest link and meta tags for PWA on next UI.
+ * Output manifest link and meta tags for PWA on SwiftPick UI.
  */
-function psai_next_manifest_link() {
+function psai_swift_manifest_link() {
     echo '<link rel="manifest" href="' . esc_url( plugins_url( 'pick-sheet-importer/manifest.json', __FILE__ ) ) . '">';
     echo '<meta name="theme-color" content="#0073aa">';
     echo '<meta name="apple-mobile-web-app-capable" content="yes">';
@@ -390,9 +391,106 @@ function psai_enqueue_scripts() {
  */
 function psai_ajax_save_progress() {
     check_ajax_referer( 'psai_nonce', 'nonce' );
-    $post_id       = intval( $_POST['post_id'] );
-    $picked_items  = isset( $_POST['picked_items'] ) ? (array) $_POST['picked_items'] : array();
-    $picked_details = isset( $_POST['picked_details'] ) ? (array) $_POST['picked_details'] : array();
+    $post_id = isset( $_POST['post_id'] ) ? intval( wp_unslash( $_POST['post_id'] ) ) : 0;
+    
+    // Verify user can edit the post
+    if ( ! current_user_can( 'edit_post', $post_id ) ) {
+        wp_send_json_error( 'Insufficient permissions' );
+    }
+    
+    $picked_items = isset( $_POST['picked_items'] ) ? (array) $_POST['picked_items'] : array();
+    $picked_items = array_map( 'intval', array_map( 'wp_unslash', $picked_items ) );
+    
+    $picked_details_raw = isset( $_POST['picked_details'] ) ? (array) $_POST['picked_details'] : array();
+    $picked_details = array();
+    foreach ( $picked_details_raw as $idx => $details ) {
+        if ( ! is_array( $details ) ) {
+            continue;
+        }
+        $idx = intval( $idx );
+        $picked_details[ $idx ] = array(
+            'bin'   => isset( $details['bin'] ) ? sanitize_text_field( wp_unslash( $details['bin'] ) ) : '',
+            'shelf' => isset( $details['shelf'] ) ? sanitize_text_field( wp_unslash( $details['shelf'] ) ) : '',
+            'time'  => isset( $details['time'] ) ? intval( wp_unslash( $details['time'] ) ) : 0,
+        );
+    }
+    
+    // Get previous state to detect new shelf scans
+    $previous_details = maybe_unserialize( get_post_meta( $post_id, 'picked_details', true ) );
+    if ( ! is_array( $previous_details ) ) {
+        $previous_details = array();
+    }
+    
+    // Get items and header for custody logging
+    $items = maybe_unserialize( get_post_meta( $post_id, 'items_table', true ) );
+    $header = maybe_unserialize( get_post_meta( $post_id, 'psai_header', true ) );
+    $tech_name = get_post_meta( $post_id, 'technician_name', true );
+    $tech_id = guinco_resolve_tech_id( $tech_name );
+    $actor_user_id = get_current_user_id();
+    $device_id = isset( $_SERVER['HTTP_USER_AGENT'] ) ? substr( sanitize_text_field( $_SERVER['HTTP_USER_AGENT'] ), 0, 64 ) : 'unknown';
+    
+    // Log PICKED events for newly scanned shelves
+    if ( is_array( $items ) && is_array( $header ) ) {
+        foreach ( $picked_details as $idx => $details ) {
+            if ( ! isset( $details['shelf'] ) || empty( $details['shelf'] ) ) {
+                continue;
+            }
+            
+            // Check if this is a new scan (shelf wasn't in previous details)
+            $was_previously_scanned = isset( $previous_details[ $idx ] ) && ! empty( $previous_details[ $idx ]['shelf'] );
+            if ( $was_previously_scanned ) {
+                continue; // Already logged
+            }
+            
+            // Extract row data
+            if ( ! isset( $items[ $idx ] ) ) {
+                continue;
+            }
+            
+            $row = $items[ $idx ];
+            $data = array();
+            foreach ( $header as $index => $col ) {
+                $data[ $col ] = isset( $row[ $index ] ) ? $row[ $index ] : '';
+            }
+            
+            $part_number = $data['PartNumber'] ?? '';
+            $qty = 1; // Default to 1 if qty not specified
+            if ( isset( $data['Qty'] ) ) {
+                $qty = absint( $data['Qty'] );
+            } elseif ( isset( $data['Quantity'] ) ) {
+                $qty = absint( $data['Quantity'] );
+            }
+            if ( $qty <= 0 ) {
+                $qty = 1;
+            }
+            
+            if ( $part_number && $tech_id > 0 ) {
+                try {
+                    guinco_log_custody_event( array(
+                        'pick_sheet_id' => $post_id,
+                        'tech_id' => $tech_id,
+                        'part_number' => $part_number,
+                        'qty' => $qty,
+                        'action' => 'PICKED',
+                        'from_loc' => 'WAREHOUSE_SHELF',
+                        'to_loc' => 'DRIVER_TRUCK', // Picked items ready for driver loading
+                        'actor_role' => 'PICKER',
+                        'actor_user_id' => $actor_user_id,
+                        'device_id' => $device_id,
+                        'source' => 'picker',
+                        'extra_json' => array(
+                            'bin' => $details['bin'] ?? '',
+                            'shelf' => $details['shelf'],
+                            'pick_time' => $details['time'] ?? time(),
+                        ),
+                    ) );
+                } catch ( Exception $e ) {
+                    error_log( '[GUINCO] Picker event log failed: ' . $e->getMessage() );
+                }
+            }
+        }
+    }
+    
     update_post_meta( $post_id, 'picked_items', maybe_serialize( $picked_items ) );
     update_post_meta( $post_id, 'picked_details', maybe_serialize( $picked_details ) );
     update_post_meta( $post_id, 'last_saved_at_picker', time() );
@@ -405,14 +503,20 @@ add_action( 'wp_ajax_psai_save_progress', 'psai_ajax_save_progress' );
  */
 function psai_ajax_complete_sheet() {
     check_ajax_referer( 'psai_nonce', 'nonce' );
-    $post_id        = intval( $_POST['post_id'] );
+    $post_id = isset( $_POST['post_id'] ) ? intval( wp_unslash( $_POST['post_id'] ) ) : 0;
+    
+    // Verify user can edit the post
+    if ( ! current_user_can( 'edit_post', $post_id ) ) {
+        wp_send_json_error( 'Insufficient permissions' );
+    }
     $items          = maybe_unserialize( get_post_meta( $post_id, 'items_table', true ) );
     $header         = maybe_unserialize( get_post_meta( $post_id, 'psai_header', true ) );
     $picked_details = maybe_unserialize( get_post_meta( $post_id, 'picked_details', true ) );
     if ( ! is_array( $items ) ) {
         wp_send_json_error( 'No items' );
     }
-    // Create CSV file.
+    
+    // Create CSV file (for backward compatibility).
     $upload_dir = wp_upload_dir();
     $dir        = trailingslashit( $upload_dir['basedir'] ) . 'pick_sheet_logs/';
     if ( ! file_exists( $dir ) ) {
@@ -467,12 +571,5 @@ function psai_ajax_save_order_pref() {
 add_action( 'wp_ajax_psai_save_order_pref', 'psai_ajax_save_order_pref' );
 
 /**
- * Add nonce to localized script.
+ * Removed unused psai_add_ajax_nonce filter - nonce is now added directly in psai_pick_sheet_shortcode().
  */
-function psai_add_ajax_nonce( $data ) {
-    $data['nonce'] = wp_create_nonce( 'psai_nonce' );
-    return $data;
-}
-add_filter( 'script_loader_tag', function ( $tag, $handle, $src ) {
-    return $tag;
-}, 10, 3 );
