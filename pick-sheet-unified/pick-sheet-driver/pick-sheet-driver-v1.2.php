@@ -105,8 +105,12 @@ function psd_driver_shortcode( $atts ) {
     // Load data
     $items   = maybe_unserialize( get_post_meta( $post_id, 'items_table', true ) );
     $header  = maybe_unserialize( get_post_meta( $post_id, 'psai_header', true ) );
+    $picked_details = maybe_unserialize( get_post_meta( $post_id, 'picked_details', true ) );
     if ( ! $items || ! $header ) {
         return '<p>No data.</p>';
+    }
+    if ( ! is_array( $picked_details ) ) {
+        $picked_details = array();
     }
     $driver_loaded = maybe_unserialize( get_post_meta( $post_id, 'driver_loaded', true ) );
     $driver_missing = maybe_unserialize( get_post_meta( $post_id, 'driver_missing', true ) );
@@ -175,6 +179,10 @@ function psd_driver_shortcode( $atts ) {
             $data[ $col ] = isset( $row[ $index ] ) ? $row[ $index ] : '';
         }
         $part = $data['PartNumber'] ?? '';
+        $detail      = isset( $picked_details[ $idx ] ) ? $picked_details[ $idx ] : array();
+        $picked_bin  = isset( $detail['bin'] ) ? sanitize_text_field( $detail['bin'] ) : '';
+        $picked_shelf = isset( $detail['shelf'] ) ? sanitize_text_field( $detail['shelf'] ) : '';
+        $picked_time = isset( $detail['time'] ) ? sanitize_text_field( $detail['time'] ) : '';
         $loaded    = in_array( $part, $driver_loaded, true );
         $missing   = in_array( $part, $driver_missing, true );
         $delivered = in_array( $part, $delivered_parts, true );
@@ -481,10 +489,12 @@ function psd_ajax_complete_sheet() {
     $header   = maybe_unserialize( get_post_meta( $post_id, 'psai_header', true ) );
     $missing  = maybe_unserialize( get_post_meta( $post_id, 'driver_missing', true ) );
     $delivered = maybe_unserialize( get_post_meta( $post_id, 'driver_delivered', true ) );
+    $picked_details = maybe_unserialize( get_post_meta( $post_id, 'picked_details', true ) );
 
     $loaded    = is_array( $loaded ) ? $loaded : array();
     $missing   = is_array( $missing ) ? $missing : array();
     $delivered = is_array( $delivered ) ? $delivered : array();
+    $picked_details = is_array( $picked_details ) ? $picked_details : array();
 
     $loaded    = array_values( array_unique( array_map( 'sanitize_text_field', $loaded ) ) );
     $missing   = array_values( array_unique( array_map( 'sanitize_text_field', $missing ) ) );
@@ -555,20 +565,33 @@ function psd_ajax_complete_sheet() {
     $filepath   = $dir . $filename;
     $fh         = fopen( $filepath, 'w' );
     $extended_header = $header;
+    $extended_header[] = 'Picked Bin';
+    $extended_header[] = 'Picked Shelf';
+    $extended_header[] = 'Pick Time';
     $extended_header[] = 'Loaded';
     $extended_header[] = 'Delivered';
     $extended_header[] = 'Missing';
     fputcsv( $fh, $extended_header );
-    foreach ( $items as $row ) {
+    foreach ( $items as $idx => $row ) {
         $data = array();
         foreach ( $header as $index => $col ) {
             $data[ $col ] = isset( $row[ $index ] ) ? $row[ $index ] : '';
         }
         $part = $data['PartNumber'] ?? '';
+        $detail = array();
+        if ( is_array( $picked_details ) && isset( $picked_details[ $idx ] ) && is_array( $picked_details[ $idx ] ) ) {
+            $detail = $picked_details[ $idx ];
+        }
+        $picked_bin   = isset( $detail['bin'] ) ? sanitize_text_field( $detail['bin'] ) : '';
+        $picked_shelf = isset( $detail['shelf'] ) ? sanitize_text_field( $detail['shelf'] ) : '';
+        $picked_time  = isset( $detail['time'] ) ? sanitize_text_field( $detail['time'] ) : '';
         $is_loaded     = in_array( $part, $loaded, true ) ? 'yes' : 'no';
         $is_delivered  = in_array( $part, $delivered, true ) ? 'yes' : 'no';
         $is_missing    = in_array( $part, $missing, true ) ? 'yes' : 'no';
         $extended_row  = $row;
+        $extended_row[] = $picked_bin;
+        $extended_row[] = $picked_shelf;
+        $extended_row[] = $picked_time;
         $extended_row[] = $is_loaded;
         $extended_row[] = $is_delivered;
         $extended_row[] = $is_missing;
