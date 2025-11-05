@@ -10,7 +10,29 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-require_once plugin_dir_path( __FILE__ ) . 'includes/ps-chain-of-custody.php';
+// Include custody core module
+require_once plugin_dir_path( __FILE__ ) . 'includes/guinco-custody-core.php';
+
+/**
+ * Activation hook: install schema.
+ */
+function guinco_picksheet_activate() {
+    guinco_install_schema();
+}
+register_activation_hook( __FILE__, 'guinco_picksheet_activate' );
+
+/**
+ * Lazy schema check at init.
+ */
+function guinco_picksheet_check_schema() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'guinco_custody_events';
+    $table_exists = $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $table_name ) ) === $table_name;
+    if ( ! $table_exists ) {
+        guinco_install_schema();
+    }
+}
+add_action( 'init', 'guinco_picksheet_check_schema', 1 );
 
 /**
  * One-time function to add shortcodes to existing pick sheets that don't have them.
@@ -134,5 +156,5 @@ require_once plugin_dir_path(__FILE__) . 'pick-sheet-manager/pick-sheet-central-
 require_once plugin_dir_path(__FILE__) . 'pick-sheet-driver/pick-sheet-driver-v1.2.php';
 require_once plugin_dir_path(__FILE__) . 'pick-sheet-search-fix/pick-sheet-search-fix.php';
 require_once plugin_dir_path(__FILE__) . 'pick-sheet-table-fix/pick-sheet-table-fix.php';
-require_once plugin_dir_path(__FILE__) . 'pick-sheet-cancellations/pick-sheet-cancellations-v1.0.php';
-require_once plugin_dir_path(__FILE__) . 'debug-quick-pick.php';
+// require_once plugin_dir_path(__FILE__) . 'pick-sheet-cancellations/pick-sheet-cancellations-v1.0.php'; // File missing
+// require_once plugin_dir_path(__FILE__) . 'debug-quick-pick.php'; // File missing

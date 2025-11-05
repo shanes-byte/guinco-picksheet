@@ -1,7 +1,7 @@
 {
-  "name": "Quick Pick Sheet",
-  "short_name": "QuickPick",
-  "start_url": "/?quick_pick=1",
+  "name": "SwiftPick Sheet",
+  "short_name": "SwiftPick",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#0073aa",
